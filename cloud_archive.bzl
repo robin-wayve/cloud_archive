@@ -1,4 +1,4 @@
-""" This rule will download an archive from Minio, Google Storage, S3 or
+""" This rule will download an archive from Azure, Minio, Google Storage, S3 or
 Backblaze, check sha256, extract it, and symlink the provided BUILD file
 inside. """
 
@@ -96,6 +96,10 @@ def cloud_archive_download(
         tool_path = repo_ctx.which("b2")
         src_url = "b2://{}/{}".format(bucket, file_path)
         cmd = [tool_path, "download-file-by-name", "--noProgress", bucket, file_path, "."]
+    elif provider == "azure":
+        tool_path = repo_ctx.which("azcopy")
+        src_url = "https://{}.blob.core.windows.net/{}".format(bucket, file_path)
+        cmd = [tool_path, "cp", src_url, "."]
     else:
         fail("Provider not supported: " + provider.capitalize())
 
@@ -161,18 +165,18 @@ def _cloud_archive_impl(ctx):
 minio_archive = repository_rule(
     implementation = _cloud_archive_impl,
     attrs = {
-        "file_path": attr.string(
-            mandatory = True,
-            doc = "Path to the file on minio. Backend needs to be set up locally for this to work.",
-        ),
-        "sha256": attr.string(mandatory = True, doc = "SHA256 checksum of the archive"),
         "build_file": attr.label(
             allow_single_file = True,
             doc = "BUILD file for the unpacked archive",
         ),
         "build_file_contents": attr.string(doc = "The contents of the build file for the target"),
-        "patches": attr.label_list(doc = "Patches to apply, if any.", allow_files = True),
+        "file_path": attr.string(
+            mandatory = True,
+            doc = "Path to the file on minio. Backend needs to be set up locally for this to work.",
+        ),
         "patch_args": attr.string_list(doc = "Arguments to use when applying patches."),
+        "patches": attr.label_list(doc = "Patches to apply, if any.", allow_files = True),
+        "sha256": attr.string(mandatory = True, doc = "SHA256 checksum of the archive"),
         "strip_prefix": attr.string(doc = "Prefix to strip when archive is unpacked"),
         "_provider": attr.string(default = "minio"),
     },
@@ -182,19 +186,19 @@ s3_archive = repository_rule(
     implementation = _cloud_archive_impl,
     attrs = {
         "bucket": attr.string(mandatory = True, doc = "Bucket name"),
-        "file_path": attr.string(
-            mandatory = True,
-            doc = "Relative path to the archive file within the bucket",
-        ),
-        "profile": attr.string(doc = "Profile to use for authentication."),
-        "sha256": attr.string(mandatory = True, doc = "SHA256 checksum of the archive"),
         "build_file": attr.label(
             allow_single_file = True,
             doc = "BUILD file for the unpacked archive",
         ),
         "build_file_contents": attr.string(doc = "The contents of the build file for the target"),
-        "patches": attr.label_list(doc = "Patches to apply, if any.", allow_files = True),
+        "file_path": attr.string(
+            mandatory = True,
+            doc = "Relative path to the archive file within the bucket",
+        ),
         "patch_args": attr.string_list(doc = "Arguments to use when applying patches."),
+        "patches": attr.label_list(doc = "Patches to apply, if any.", allow_files = True),
+        "profile": attr.string(doc = "Profile to use for authentication."),
+        "sha256": attr.string(mandatory = True, doc = "SHA256 checksum of the archive"),
         "strip_prefix": attr.string(doc = "Prefix to strip when archive is unpacked"),
         "_provider": attr.string(default = "s3"),
     },
@@ -204,18 +208,18 @@ gs_archive = repository_rule(
     implementation = _cloud_archive_impl,
     attrs = {
         "bucket": attr.string(mandatory = True, doc = "Google Storage bucket name"),
-        "file_path": attr.string(
-            mandatory = True,
-            doc = "Relative path to the archive file within the bucket",
-        ),
-        "sha256": attr.string(mandatory = True, doc = "SHA256 checksum of the archive"),
         "build_file": attr.label(
             allow_single_file = True,
             doc = "BUILD file for the unpacked archive",
         ),
         "build_file_contents": attr.string(doc = "The contents of the build file for the target"),
-        "patches": attr.label_list(doc = "Patches to apply, if any.", allow_files = True),
+        "file_path": attr.string(
+            mandatory = True,
+            doc = "Relative path to the archive file within the bucket",
+        ),
         "patch_args": attr.string_list(doc = "Arguments to use when applying patches."),
+        "patches": attr.label_list(doc = "Patches to apply, if any.", allow_files = True),
+        "sha256": attr.string(mandatory = True, doc = "SHA256 checksum of the archive"),
         "strip_prefix": attr.string(doc = "Prefix to strip when archive is unpacked"),
         "_provider": attr.string(default = "google"),
     },
@@ -225,19 +229,40 @@ b2_archive = repository_rule(
     implementation = _cloud_archive_impl,
     attrs = {
         "bucket": attr.string(mandatory = True, doc = "Backblaze B2 bucket name"),
-        "file_path": attr.string(
-            mandatory = True,
-            doc = "Relative path to the archive file within the bucket",
-        ),
-        "sha256": attr.string(mandatory = True, doc = "SHA256 checksum of the archive"),
         "build_file": attr.label(
             allow_single_file = True,
             doc = "BUILD file for the unpacked archive",
         ),
         "build_file_contents": attr.string(doc = "The contents of the build file for the target"),
-        "patches": attr.label_list(doc = "Patches to apply, if any.", allow_files = True),
+        "file_path": attr.string(
+            mandatory = True,
+            doc = "Relative path to the archive file within the bucket",
+        ),
         "patch_args": attr.string_list(doc = "Arguments to use when applying patches."),
+        "patches": attr.label_list(doc = "Patches to apply, if any.", allow_files = True),
+        "sha256": attr.string(mandatory = True, doc = "SHA256 checksum of the archive"),
         "strip_prefix": attr.string(doc = "Prefix to strip when archive is unpacked"),
         "_provider": attr.string(default = "backblaze"),
+    },
+)
+
+az_archive = repository_rule(
+    implementation = _cloud_archive_impl,
+    attrs = {
+        "bucket": attr.string(mandatory = True, doc = "Azure Storage Account name"),
+        "build_file": attr.label(
+            allow_single_file = True,
+            doc = "BUILD file for the unpacked archive",
+        ),
+        "build_file_contents": attr.string(doc = "The contents of the build file for the target"),
+        "file_path": attr.string(
+            mandatory = True,
+            doc = "Container name and relative path to the archive file",
+        ),
+        "patch_args": attr.string_list(doc = "Arguments to use when applying patches."),
+        "patches": attr.label_list(doc = "Patches to apply, if any.", allow_files = True),
+        "sha256": attr.string(mandatory = True, doc = "SHA256 checksum of the archive"),
+        "strip_prefix": attr.string(doc = "Prefix to strip when archive is unpacked"),
+        "_provider": attr.string(default = "azure"),
     },
 )
